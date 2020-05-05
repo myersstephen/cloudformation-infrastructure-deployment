@@ -218,8 +218,7 @@ Resources:
         Statement:
           - Effect: "Allow"
             Action:
-              - s3:Get*
-              - s3:List*
+              - s3:*
             Resource: "*"
       Roles:
         - !Ref S3ReadOnlyRoleEC2
@@ -263,7 +262,95 @@ Resources:
           ToPort: 65535
           CidrIp: !Ref AllAddresses
 
+  WebAppLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          apt-get update -y
+          apt-get install unzip awscli -y
+          apt-get install apache2 -y
+          systemctl start apache2.service
+          cd /var/www/html
+          aws s3 cp s3://udacity-demo-1/udacity.zip .
+          unzip -o udacity.zip
+      ImageId: ami-003634241a8fcdec0
+      SecurityGroups:
+        - Ref: WebServerSecGroup
+      InstanceType: t2.micro
+      IamInstanceProfile: !Ref ProfileWithRolesForOurApp
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sdk"
+          Ebs:
+            VolumeSize: "10"
+
+  WebAppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId: !Ref VPC
+
+  WebAppGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      LaunchConfigurationName:
+        Ref: WebAppLaunchConfig
+      MinSize: "4"
+      MaxSize: "8"
+      TargetGroupARNs:
+        - Ref: WebAppTargetGroup
+
+  WebAppLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - Ref: LBSecGroup
+
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: WebAppTargetGroup
+      LoadBalancerArn:
+        Ref: WebAppLB
+      Port: "80"
+      Protocol: HTTP
+
+  ALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref "WebAppTargetGroup"
+      Conditions:
+        - Field: path-pattern
+          Values: [/]
+      ListenerArn: !Ref "Listener"
+      Priority: 1
+
 Outputs:
+  WebAppLoadBalancerDNSName:
+    Description: Public URL of Load Balancer
+    Value: !Join ["", ["http://", !GetAtt WebAppLB.DNSName]]
+    Export:
+      Name: !Sub ${EnvironmentName}-LB-DNSName
+
   VPC:
     Description: A reference to the created VPC
     Value: !Ref VPC
