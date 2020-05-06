@@ -10,11 +10,6 @@ Please view the reference architecture diagram and prerequisites before getting 
 
 ![Reference Architecture Diagram](/ReferenceArchitectureDiagram.png)
 
-### Load Balancer DNS URL
-
-- Access application here:
-  - http://infra-WebAp-1DT7T5P6SMFAK-1977418997.us-west-2.elb.amazonaws.com
-
 ### Prerequisites
 
 - An [AWS Account](https://aws.amazon.com)
